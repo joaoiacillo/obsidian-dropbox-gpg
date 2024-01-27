@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+
+# odpgp (v1.0) :: A Bash utility for encrypting and decrypting Obsidian vaults
+# into Dropbox.
+#################################################
+#  by João Iacillo <joaopiacillo@outlook.com.br>
+
+DROPBOXPATH=${DROPBOXPATH-~/Desktop}
+VAULTPATH=${VAULTPATH-$(pwd)}
+
+BACKUPPATH=${BACKUPPATH-.}
+SIGNATUREPATH=${SIGNATUREPATH-$BACKUPPATH/pgp-signs}
+
+TAR_FILE="$(basename $VAULTPATH).tar.gz"
+SUM_FILE="$TAR_FILE.sha256sum"
+
+GPG_FILE="$TAR_FILE.gpg"
+SIG_FILE="$SUM_FILE.sig"
+
+DROP_GPG_FILE="$DROPBOXPATH/$BACKUPPATH/$GPG_FILE"
+DROP_SIG_FILE="$DROPBOXPATH/$SIGNATUREPATH/$SIG_FILE"
+
+throw() {
+    echo ogd: $@ >&2
+    exit 1
+}
+
+drop_hasencfiles() {
+    [ -e "$DROP_GPG_FILE" -o -e "$DROP_SIG_FILE" ]
+}
+
+encrypt() {
+    if drop_hasencfiles; then
+        echo -n "Dropbox already holds encryption files. Would you like to proceed? [y/N] "
+        read -n 1 CONFIRMATION
+        echo
+        CONFIRMATION=${CONFIRMATION,,}
+        [ "$CONFIRMATION" != "y" ] && exit 0
+    fi
+
+    tar -czf "$TAR_FILE" "$VAULTPATH"/.
+    [ $? -ne 0 ] && throw Error on compacting the vault
+    sha256sum "$TAR_FILE" | cut -d\  -f1 | tr -d "\n" > "$SUM_FILE"
+
+    [ -e "$SIG_FILE" ] && rm "$SIG_FILE"
+    gpg --output "$SIG_FILE" --sign "$SUM_FILE"
+    [ $? -ne 0 ] && throw Error on signing
+    [ -e "$GPG_FILE" ] && rm "$GPG_FILE"
+    gpg --output "$GPG_FILE" -e "$TAR_FILE"
+    [ $? -ne 0 ] && throw Error on encrypting
+
+    [ -d "$DROPBOXPATH/$BACKUPPATH" ] || mkdir "$DROPBOXPATH/$BACKUPPATH"
+    mv "$GPG_FILE" "$DROPBOXPATH/$BACKUPPATH"
+    [ -d "$DROPBOXPATH/$SIGNATUREPATH" ] || mkdir "$DROPBOXPATH/$SIGNATUREPATH"
+    mv "$SIG_FILE" "$DROPBOXPATH/$SIGNATUREPATH"
+
+    shred -zfu "$SUM_FILE"
+    shred -zfu "$TAR_FILE"
+
+    echo "Obsidian vault successfully stored on Dropbox with a PGP protection layer."
+
+    echo -n "Would you want to [S]hred, [Z]ero Shred or [R]emove your local vault copy? [Q for cancel] "
+    read -n 1 CONFIRMATION
+    echo
+    CONFIRMATION=${CONFIRMATION,,}
+    COMMAND=""
+    ARGS=""
+
+    case $CONFIRMATION in
+        "s")
+            COMMAND="shred"
+            ARGS="-fu"
+        ;;
+        "r")
+            COMMAND="rm"
+            ARGS="-f"
+        ;;
+        "z")
+            COMMAND="shred"
+            ARGS="-zfu"
+        ;;
+        *)
+            exit 0
+        ;;
+    esac
+
+    IFS=$'\n'
+    for FILE in $(find "$VAULTPATH" -type f); do
+        $COMMAND $ARGS "$FILE"
+    done
+
+    rm -rf "$VAULTPATH"
+
+    echo "Local obsidian vault copy successfully removed/shreded."
+}
+
+decrypt() {
+    drop_hasencfiles
+    if [ $? -ne 0 ]; then
+        echo "Missing encrypted files in Dropbox. Are you sure you encrypted them in first place?"
+        exit 1
+    fi
+
+    cp -t . "$DROP_GPG_FILE" "$DROP_SIG_FILE"
+
+    SIG_SHASUM=$(gpg -d "$SIG_FILE")
+    [ $? -ne 0 ] && throw Error on verifying the signature
+    echo -en "\nIs this a good signature? [y/N] "
+    read -n 1 CONFIRMATION
+    echo
+    CONFIRMATION=${CONFIRMATION,,}
+    [ "$CONFIRMATION" != "y" ] && exit 1
+
+    [ -e "$TAR_FILE" ] && rm "$TAR_FILE"
+    gpg --output "$TAR_FILE" -d "$GPG_FILE"
+    [ $? -ne 0 ] && throw Error on decrypting
+
+    GPG_SHASUM=$(sha256sum "$TAR_FILE" | cut -d\  -f1 | tr -d "\n")
+
+    [ "$SIG_SHASUM" != "$GPG_SHASUM" ] && throw SHAsums don\'t coincide
+    echo SHAsums coincide
+
+    [ ! -d "$VAULTPATH" ] && mkdir -p "$VAULTPATH"
+    tar -xz --overwrite -f "$TAR_FILE" -C "$(dirname $VAULTPATH)"
+
+    rm -f "$TAR_FILE" "$SUM_FILE" "$GPG_FILE" "$SIG_FILE"
+    echo Obsidian vault successfully decrypted and restored.
+}
+
+ACTION=${1-encrypt}
+
+case $ACTION in
+    "encrypt"|"e"|"enc")
+        encrypt
+    ;;
+    "decrypt"|"d"|"dec")
+        decrypt
+    ;;
+    *)
+        throw Unknown option: $ACTION
+    ;;
+esac

@@ -1,0 +1,92 @@
+# Encriptação
+
+## Input
+
+-   Localização do Dropbox no sistema
+-   Localização da Vault do Obsidian no sistema
+-   Caminho relativo do backup
+-   Caminho relativo da assinatura digital
+
+## Steps
+
+### Verificação
+
+-   Se os arquivos de assinatura ou GPG existirem no DropBox, perguntar ao usuário
+    se ele quer substituir os arquivos, e caso:
+    -   **Sim**: Continuar o programa
+    -   **Não**: Abortar o programa
+
+### Encriptação
+
+-   Compactar a Vault para um arquivo tar
+-   Gerar uma sha256sum do arquivo tar
+-   Assinar o arquivo sha256sum para um arquivo sig
+-   Criptografar o arquivo tar para um arquivo gpg
+
+```bash
+$ ls
+vault.tar.gz vault.tar.gz.sha256sum
+vault.tar.gz.gpg vault.tar.gz.sha256sum.sig
+```
+
+### Transferência
+
+-   Mover o arquivo gpg para o caminho de backup no Dropbox
+-   Mover o arquivo sig para o caminho de assinatura digital no Dropbox
+
+### Cleanup
+
+-   Retalhar o arquivo sha256sum, e então o excluir
+-   Retalhar o arquivo tar, e então o excluir
+-   Perguntar se o usuário quer que a fonte original (a pasta da vault) seja
+    retalhada e removida. E caso:
+    -   **Sim**: Retalhar e remover a Vault
+    -   **Não**: Não fazer nada
+
+# Decriptação
+
+## Input
+
+-   Localização do Dropbox no sistema
+-   Localização da Vault do Obsidian no sistema
+-   Caminho relativo do backup
+-   Caminho relativo da assinatura digital
+
+## Steps
+
+### Verificação
+
+-   Se não existir arquivos criptografados no Dropbox, alertar e abortar.
+
+### Cópia
+
+-   Copiar a assinatura digital e o arquivo gpg para a PWD
+
+### Validação Manual
+
+-   Verificar a assinatura digital pelo gpg
+-   Perguntar ao usuário se aquela assinatura está correta
+-   Se a assinatura não estiver correta, abortar o programa.
+
+### Decriptação
+
+-   Decriptar o arquivo pgp para um arquivo tar
+-   Decriptar o arquivo de assinatura digital
+
+### Verificação Automática
+
+-   Verificar se o SHASUM da assinatura é o mesmo do SHASUM do arquivo tar
+-   Caso os SHASUM não se coincidam, alertar o usuário e abortar o programa.
+
+### Descompactação
+
+-   Descompactar o arquivo TAR dentro da pasta da Vault sobrescrevendo todos os
+    arquivos existentes.
+
+### Cleanup
+
+-   Remover os arquivos:
+    1. Tar
+    2. GPG
+    3. SHASUM
+    4. Assinatura
