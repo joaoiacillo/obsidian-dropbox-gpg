@@ -5,7 +5,7 @@
 #################################################
 #  by João Iacillo <joaopiacillo@outlook.com.br>
 
-DROPBOXPATH=${DROPBOXPATH-~/Desktop}
+DROPBOXPATH=${DROPBOXPATH-~/Dropbox}
 VAULTPATH=${VAULTPATH-$(pwd)}
 
 BACKUPPATH=${BACKUPPATH-.}
